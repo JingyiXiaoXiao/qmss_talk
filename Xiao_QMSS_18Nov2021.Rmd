@@ -1,0 +1,990 @@
+---
+title: Introducing `<font color='#FEBC11'>Lavaan</font>` for Latent Variable Analysis in R<br> <img src="img/cover.png" style="width:50%; float:right" />
+# subtitle: 
+# An Introduction to Latent Variable Analysis using Lavaan in R
+date: November 18, 2021 
+author: <br><br>Jingyi Xiao 
+institute: '<span style="font-size: 75%">GeoTrans Lab, Department of Geography `r emo::ji("globe_with_meridians")` <br>UC Santa Barbara</span>'
+
+# , float:right , clear:right
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: ["xaringan-themer.css", "my.css"]
+    # seal: false
+    nature:
+      titleSlideClass: [left, middle]
+      ratio: '16:9'
+      slideNumberFormat: '%current%'
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+--- 
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version=FALSE)
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+library(emo)
+library(RefManageR)
+BibOptions(check.entries=FALSE,
+           bib.style="authoryear", # Bibliography style
+           max.names=3, # Max author names displayed in bibliography
+           sorting="nyt", #Name, year, title sorting
+           cite.style="authoryear", # citation style
+           style="markdown",
+           hyperlink=TRUE,
+           dashed=FALSE)
+myBib <- ReadBib("myBib.bib", check=TRUE)
+```
+
+```{r xaringan-themer, include=FALSE, warning=FALSE}
+library(xaringanthemer)
+style_duo_accent(
+  primary_color="#003660", #navy
+  secondary_color="#FEBC11",  # Gold
+  # white_color="#DAE6E6", # light-mist
+  # black_color="#09847A", # sea-green
+  colors=c(
+    navy="#003660",
+    gold="#FEBC11",
+    coral="#EF5645",
+    sea_green="#09847A",
+    aqua="#047C91",
+    moss="#6D7D33",
+    dark_coral="#C43424",
+    clay="#DCD6CC",
+    light_clay="#F1EEEA",
+    sandstone="#C9BF9D",
+    light_sandstone="#EDEADF",
+    mist="#9CBEBE",
+    light_mist="#DAE6E6",
+    purple="#800080", 
+    light_yellow="#fff2cc",
+    light_green="#d9ead3",
+    light_blue="#cfe2f3"
+  ),
+  title_slide_background_color="#003660", #navy
+  title_slide_background_image="img/geog_logo.svg",
+  title_slide_background_size="15%",
+  title_slide_background_position="95% 90%", 
+  link_color="#FEBC11",  # Gold
+  table_row_even_background_color=lighten_color("#DAE6E6", 0.8), # 
+)
+```
+
+class: middle 
+
+### Motivations
+
+Human travel behavior `r emo::ji("car")` `r emo::ji("bus")` `r emo::ji("train")` `r emo::ji("skateboard")` `r emo::ji("bicycle")` `r emo::ji("kick_scooter")` `r emo::ji("ferry")` `r emo::ji("airplane")`
+
+--
+
+Latent variable analysis `r emo::ji("open_book")`
+
+--
+
+Mplus `r emo::ji("moneybag")` `r emo::ji("sob")`
+
+--
+
+`Lavaan` `r emo::ji("free")` + `r emo::ji("woman_technologist")` + `r emo::ji("broom")` = `r emo::ji("hugging_face")`
+
+
+
+---
+
+class: middle
+
+### Outline
+
+.sea_green[
+- Introduction
+- Examples
+  - Confirmatory Factor Analysis
+  - Path Analysis
+  - Structural Equation Modeling
+  - Linear Growth Model
+- Resources
+- Summary
+]
+
+---
+class: middle
+
+### `Lavaan` `r emo::ji("open_mouth")` 
+
+- R pacakge `Lavaan` (**LA**tent **VA**riable **AN**alysis) `r Citep(myBib, "rosseel2012lavaan")`
+--
+
+  - .gold[Free and open-source]
+  - .dark_coral[Easy and intuitive to use]
+  - .navy[Reliable and advanced with commercial-quality]
+  - .sea_green[Extensible]
+  - .purple[Constantly upgrading]
+
+---
+class: middle
+
+### To Begin With
+
+
+```{r eval=FALSE}
+install.packages("lavaan", dependencies=TRUE) # (R version 4.0.0 or higher)
+```
+--
+```{r}
+library(lavaan)
+```
+
+---
+### `Lavaan` Syntax `r emo::ji("notebook")` 
+
+Formula type | Operator | Example | Description | Diagram
+:----------- | :-------: | :------| :----------| :------:
+.aqua[regression] | `~` | `y ~ x`|.aqua[y is .aqua[regressed] on x ]| <img src="img/regression.png" height="50px"/> 
+.moss[latent variable definition] | `=~` | `f =~ y1 + y2 + y3` | .moss[f is .moss[measured] by y1, y2, y3] | <img src="img/latent_var.png" height="120px"/>
+.sea_green[(co)variance] |`~~` | `y1 ~~ y1` <br> `y2 ~~ y3` |.sea_green[Variance of y1 <br> Covariance between y2 and y3] | <img src="img/co_var.png" height="120px"/> 
+.dark_coral[intercept] | `~1` | `y1 ~ 1` | .dark_coral[The intercept (mean) of y1] | <img src="img/intercept.png" height="50px"/> 
+
+---
+### `Lavaan` Syntax `r emo::ji("notebook")` (Cont') 
+
+Formula type | Operator | Example | Description | Diagram
+:----------- | :-------: | :------| :----------| :----:
+fixed parameter | `*`| `1*y1` | Fix the parameter (factor loading) of y1 to 1 | <img src="img/fix_para.png" height="50px"/>
+free parameter | `NA*` |`NA*y1`| The parameter (factor loading) of y1 is freely estimated  | <img src="img/free_para.png" height="50px"/>
+
+
+---
+
+class: inverse, center, middle
+
+## Example 1: Confirmatory Factor Analysis (CFA)
+
+---
+
+### A Two-Factor CFA Model
+
+.pull-left[
+
+```{r echo=FALSE}
+cfa.df <- read.table(url("http://www.statmodel.com/usersguide/chap5/ex5.1.dat")
+                  , col.names=paste0("y", 1:6 ))
+print(tibble::as_tibble(cfa.df), n=5)
+```
+
+<br />
+
+- Six .dark_coral[continuous] indicators `y1-y6`
+- Two factors `f1` & `f2` 
+- `f1` is .moss[measured] by `y1`, `y2`, and `y3`
+- `f2` is .moss[measured] by `y4`, `y5`, and `y6`
+- `f1` is .sea_green[correlated] with `f2`
+]
+
+--
+
+.pull-right[
+
+```{r, echo=FALSE, out.width="50%", fig.align='center'}
+knitr::include_graphics("img/example1.png")
+```
+
+]
+
+--
+
+.footnote[*Data and model from [Example 5.1](http://www.statmodel.com/HTML_UG/chapter5V8.htm) in .navy[_Mplus user’s guide_] `r Citep(myBib, "muthen20121998")`.]
+
+
+---
+
+### R Code
+
+.left-column[
+
+<br>
+<br>
+<br>
+```{r, echo=FALSE, out.width="100%", fig.align='left'}
+knitr::include_graphics("img/example1.png")
+```
+
+]
+
+.right-column[
+```{r}
+# specify the model
+cfa.model <- '# a two-factor CFA with continuous factor indicators
+
+              # define the latent variables (factors)
+              f1 =~ y1 + y2 + y3
+              f2 =~ y4 + y5 + y6 
+              
+              # covariance (Optional; included by default)
+              f1 ~~ f2 
+              
+              # intercepts 
+              y1 ~ 1 
+              y2 ~ 1 
+              y3 ~ 1 
+              y4 ~ 1 
+              y5 ~ 1 
+              y6 ~ 1
+              '
+# fit the model
+cfa.fit <- cfa(cfa.model, data=cfa.df)
+```
+]
+
+
+---
+
+### Results and Comparison
+
+.pull-left[
+
+**.gold[.large[*Lavaan* results]]**
+
+```{r echo=TRUE, eval=FALSE}
+summary(cfa.fit, 
+        fit.measures=TRUE) # print fit indices #<<
+```
+
+
+.scriptsize[.scroll-box-20[
+
+```{r echo=FALSE}
+summary(cfa.fit, fit.measures=TRUE)
+```
+]
+]
+]
+
+--
+
+.pull-right[
+
+**.gold[.large[*Mplus* results]]**
+<br>
+<br>
+<br>
+<br>
+```{r echo=FALSE}
+cfa.mplus <- readLines("http://www.statmodel.com/usersguide/chap5/ex5.1.html")
+cfa.mplus <- cfa.mplus[-grep(">", cfa.mplus)]
+```
+
+.scriptsize[.scroll-box-20[
+
+```{r echo=FALSE} 
+cat(cfa.mplus[c(23:45,76:161)], sep="\n") #c(41, 25, 26, 80:161)
+```
+]
+]
+]
+
+---
+
+### `r emo::ji("green_heart")` Tip: Intercepts (Mean Structures)  
+
+.pull-left[
+
+**.large[.gold[Method *1*]]**  
+.navy[Add intercepts] .coral[.bold[explicitly]] .navy[in model specification]
+
+```{r eval=FALSE}
+# specify the model
+cfa.model <- '# factors
+              f1 =~ y1 + y2 + y3
+              f2 =~ y4 + y5 + y6 
+              
+              # intercepts  #<<
+              y1 ~ 1 #<<
+              y2 ~ 1 #<<
+              y3 ~ 1 #<<
+              y4 ~ 1 #<<
+              y5 ~ 1 #<<
+              y6 ~ 1 #<<
+              '
+# fit the model
+cfa.fit <- cfa(cfa.model, data=cfa.df)
+```
+]
+
+--
+
+.pull-right[
+
+**.large[.gold[Method *2*]]**  
+.navy[Add intercepts] .coral[.bold[implicitly]]* .navy[in fitting function]
+
+```{r eval=FALSE}
+# specify the model
+cfa.model <- '# factors
+              f1 =~ y1 + y2 + y3
+              f2 =~ y4 + y5 + y6 
+              '
+
+# fit the model
+cfa.fit <- cfa(cfa.model, data=cfa.df, 
+               # include intercepts #<<
+               meanstructure=TRUE) #<<
+```
+
+.footnote[
+
+*The default intercept is 1. Use explicit method if you want something like `y1 ~ 0.5`.
+
+]
+
+]
+
+---
+
+### Parameter Constraints - Model Identification
+
+.pull-left[
+
+**.large[.gold[Method *1*]]** (Default)  
+.navy[Fix the] .coral[factor loading]  .navy[of the] .aqua[.bold[first indicator ]] .navy[to 1]
+
+.footnotesize[
+```{r highlight.output=c(2,5,8,9)}
+# specify the model
+cfa.model.1 <- ' # factors
+                 f1 =~ y1 + y2 + y3   #<<
+                 f2 =~ y4 + y5 + y6 ' #<<
+#
+#
+#
+# fit the model
+cfa.fit.1 <- cfa(cfa.model.1, data=cfa.df)
+parameterEstimates(cfa.fit.1)[c(1:6,13:14),]
+```
+]
+]
+
+--
+
+.pull-right[
+
+**.large[.gold[Method *2*]]**  
+.navy[Fix the] .coral[variance] .navy[ of the] .aqua[factor] .navy[to 1]
+
+.footnotesize[
+```{r highlight.output=c(2,5,8,9)}
+# specify the model
+cfa.model.2 <- ' # factors
+                 f1 =~ NA*y1 + y2 + y3   #<<
+                 f2 =~ NA*y4 + y5 + y6   #<<
+                 # factor variances set to 1
+                 f1 ~~ 1*f1   #<<
+                 f2 ~~ 1*f2 ' #<<
+# fit the model 
+cfa.fit.2 <- cfa(cfa.model.2, data=cfa.df)
+parameterEstimates(cfa.fit.2)[1:8,]
+```
+]
+]
+
+--
+
+.footnote[**.gold[Method *3*]** use `cfa.fit.1 <- cfa(cfa.model.1, data=cfa.df, **std.lv=TRUE**)` when fitting the model.]
+
+---
+
+### Standardized Solution - 1
+
+**.large[.gold[Method *1*]]**  
+Use the .coral[argument `standardized=TRUE`] in the functions
+
+.pull-left[
+
+.small[
+```{r}
+cfa.res.1 <- parameterEstimates(cfa.fit.1, 
+                                standardized=TRUE) #<<
+cfa.res.1[c(1:6,13:14), c(1:6, 10:11)]
+```
+]
+]
+
+.pull-right[
+.small[
+```{r}
+cfa.res.2 <- parameterEstimates(cfa.fit.2, 
+                                standardized=TRUE) #<<
+cfa.res.2[1:8, c(1:6, 10:11)]
+```
+]
+]
+
+--
+
+.footnote[`standardized=TRUE` shows `std.lv` and `std.all` parameter estimates (corresponds to `STD` and `STDYX` in *Mplus*, respectively).]
+
+---
+
+### Standardized Solution - 2
+
+**.large[.gold[Method *2*]]**  
+Call the .coral[function `standardizedSolution()`] directly 
+
+.pull-left[
+.small[
+```{r}
+cfa.res.3 <- standardizedSolution(cfa.fit.1)  #<<
+cfa.res.3[c(1:6,13:14),-c(8:9)]
+```
+]
+]
+
+.pull-right[
+.small[
+```{r}
+cfa.res.4 <- standardizedSolution(cfa.fit.2) #<<
+cfa.res.4[c(1:8),-c(8:9)]
+```
+]
+]
+
+.footnote[`standardizedSolution()` only shows the .coral[standardized] parameter estimates regardless of model specification and parameter constraints.]
+
+---
+
+class: middle
+
+### Commonly Used Functions `r emo::ji("toolbox")`
+
+- `summary()` .light_mist[outputs an overview of the fitted model]
+- `parameterEstimates()` .light_mist[returns estimated model parameters]
+- `standardizedSolution()` .light_mist[returns standardized parameter estimates]
+- `fitted()` and `fitted.values()` .light_mist[ return the model-implied covariance matrix (and mean vector)]
+- `resid()` and `residuals()` .light_mist[returns (unstandardized) residuals]
+- `vcov()` .light_mist[returns the estimated covariance matrix of the parameter estimates]
+- `AIC()` and `BIC()` .light_mist[return the AIC and BIC values]
+- `fitMeasures()` .light_mist[returns various fit measures such as CFI/TLI]
+
+---
+class: inverse, center, middle 
+## Example 2: Path Analysis
+
+---
+
+### A Path Model
+
+.pull-left[
+
+```{r echo=FALSE}
+pa.df <- read.table(url("http://www.statmodel.com/usersguide/chap3/ex3.12.dat")
+                 , col.names=c(paste0("u", 1:3), paste0("x", 1:3)))
+pa.df[c("u1", "u2", "u3")] <- lapply(pa.df[c("u1", "u2", "u3")], ordered)
+
+print(tibble::as_tibble(pa.df), n=5)
+```
+
+<br>
+
+- Three .dark_coral[binary/ordinal] dependent variables `u1-u3` 
+- Three .dark_coral[continuous] covariates `x1-x3`
+- `u1` is .aqua[regressed] on `x1`, `x2`, and `x3`
+- `u2` is .aqua[regressed] on `x1`, `x2`, and `x3`
+- `u3` is .aqua[regressed] on the mediating variables `u1` and `u2` and the covariate `x2`
+
+]
+
+.pull-right[
+<br />
+<br />
+```{r, echo=FALSE, out.width="80%", fig.align='center'}
+knitr::include_graphics("img/example2.png")
+```
+]
+
+.footnote[*Data and model from [Example 3.12](http://www.statmodel.com/HTML_UG/chapter3V8.htm) in .navy[_Mplus user’s guide_] `r Citep(myBib, "muthen20121998")`.]
+
+---
+### R Code
+
+.left-column[
+<br />
+<br />
+```{r, echo=FALSE, out.width="100%", fig.align='left'}
+knitr::include_graphics("img/example2.png")
+```
+]
+
+
+.right-column[
+```{r}
+pa.model <- '# a path analysis with ordered dependent variables
+          
+             # define the paths
+             u1 ~ x1 + x2 + x3
+             u2 ~ x1 + x2 + x3
+             u3 ~ u1 + u2 + x2 '
+
+pa.fit <- sem(pa.model, data=pa.df,
+              estimator="WLSMV")  #<<
+```
+
+.footnote[
+.coral[WLSMV]: diagonally weighted least squares with mean- and variance-adjusted.  
+Other estimators for ordinal endogenous variables are .coral[DWLS] (Diagonally Weighted Least Squares), .coral[ULSMV] (Unweighted Least Squares with Mean- and Variance-adjusted), .coral[PML] (Pairwise Maximum Likelihood) and [etc](https://lavaan.ugent.be/tutorial/est.html).
+]
+
+]
+
+---
+### Results and Comparison: Parameters
+
+.pull-left[
+
+**.gold[.large[*Lavaan* results]]**
+
+.footnotesize[
+```{r echo=FALSE}
+capture.output(summary(pa.fit, fit.measures=TRUE), file="pa_res.txt")
+pa.res <- readLines("pa_res.txt")
+cat(pa.res[c(54:67, 74,75, 77:82)], sep="\n")
+```
+]
+]
+
+.pull-right[
+
+**.gold[.large[*Mplus* results]]**
+
+.footnotesize[
+```{r echo=FALSE}
+pa.mplus <- readLines("http://www.statmodel.com/usersguide/chap3/ex3.12.html")
+pa.mplus <- pa.mplus[-grep(">", pa.mplus)]
+cat(pa.mplus[c(132:156)[-(c(134,139,144)-131)]], sep="\n")
+```
+]
+]
+
+
+
+
+---
+### `r emo::ji("green_heart")` Tip: Ordinal Variables in `Lavaan`
+
+
+
+.pull-left[
+
+**.gold[.large[Method *1*]]**  
+.navy[Declare variables as] *.aqua[ordered]* .navy[in the] .coral[.bold[data frame]]
+
+```{r eval=FALSE}
+pa.df[c("u1", "u2", "u3")] <- #<<
+  lapply(pa.df[c("u1", "u2", "u3")], ordered) #<<
+
+pa.model <- '# define the paths
+             u1 ~ x1 + x2 + x3
+             u2 ~ x1 + x2 + x3
+             u3 ~ u1 + u2 + x2 '
+
+pa.fit <- sem(pa.model, data=pa.df,
+              estimator="WLSMV")
+#
+```
+
+]
+
+--
+
+.pull-right[
+
+**.gold[.large[Method *2*]]**  
+.navy[Declare variables as] *.aqua[ordered]* .navy[in the] .coral[.bold[fitting function]]
+
+```{r eval=FALSE}
+# 
+# 
+# 
+pa.model <- '# define the paths
+             u1 ~ x1 + x2 + x3
+             u2 ~ x1 + x2 + x3
+             u3 ~ u1 + u2 + x2 '
+
+pa.fit <- sem(pa.model, data=pa.df, 
+              estimator="WLSMV",
+              ordered=c("u1", "u2", "u3")) #<<
+```
+
+]
+
+---
+
+class: inverse, center, middle
+
+## Example 3: Structural Equation Modeling (SEM)
+
+---
+
+### A SEM
+
+
+```{r echo=FALSE}
+sem.df <- read.table(url("http://www.statmodel.com/usersguide/chap5/ex5.11.dat")
+                    , col.names=c(paste0("y", 1:12)))
+print(round(tibble::as_tibble(sem.df), digits=2), n=3)
+```
+
+
+--
+<hr>
+
+.pull-left[
+
+- Twelve .dark_coral[continuous] indicator variables `y1-y12`
+- Four .dark_coral[continuous] latent variables `f1-f4`
+- `f1` is .moss[measured] by `y1`, `y2`, and `y3`
+- `f2` is .moss[measured] by `y4`, `y5`, and `y6`
+- `f3` is .moss[measured] by `y7`, `y8`, and `y9`
+- `f4` is .moss[measured] by `y10`, `y11`, and `y12`
+- `f1` is .moss[measured] by `y1`, `y2`, and `y3`
+- `f2` is .moss[measured] by `y4`, `y5`, and `y6`
+- `f3` is .aqua[regressed] by `f1`, `f2`
+- `f4` is .aqua[regressed] by `f3`
+- `f1` is .sea_green[correlated] with `f2`
+]
+
+.pull-right[
+
+```{r, echo=FALSE, out.width="75%", fig.align='center'}
+knitr::include_graphics("img/example3.png")
+```
+
+<br>
+
+.footnote[*Data and model from [Example 5.11](http://www.statmodel.com/HTML_UG/chapter5V8.htm) in .navy[_Mplus user’s guide_] `r Citep(myBib, "muthen20121998")`.]
+
+]
+
+
+
+---
+### R Code 
+
+.left-column[
+<br />
+<br />
+<br />
+<br />
+<br />
+<br />
+```{r, echo=FALSE, out.width="100%", fig.align='left'}
+knitr::include_graphics("img/example3.png")
+```
+]
+
+
+.right-column[
+```{r}
+sem.model <- '# a SEM with continuous factor indicators
+              
+              # measurement model
+              f1 =~ y1 + y2 + y3
+              f2 =~ y4 + y5 + y6
+              f3 =~ y7 + y8 + y9
+              f4 =~ y10+ y11+ y12
+              
+              # regressions
+              f4 ~ f3
+              f3 ~ f1 + f2
+              
+              # covariance
+              f1 ~~ f2
+              '
+
+sem.fit <- sem(sem.model, data=sem.df, meanstructure=TRUE)
+```
+
+]
+
+---
+### Results and Comparison: Parameters
+
+.pull-left[
+
+**.gold[.large[*Lavaan* results]]**
+
+.scriptsize[
+```{r echo=FALSE}
+capture.output(summary(sem.fit, fit.measures=TRUE), file="sem_res.txt")
+sem.res <- readLines("sem_res.txt")
+cat(sem.res[c(53,52,54:82)[-(c(70,72,78,80)-51)]], sep="\n")
+```
+]
+]
+
+.pull-right[
+
+**.gold[.large[*Mplus* results]]**
+
+.scriptsize[
+```{r echo=FALSE}
+sem.mplus <- readLines("http://www.statmodel.com/usersguide/chap5/ex5.11.html")
+sem.mplus <- sem.mplus[-grep(">", sem.mplus)]
+cat(sem.mplus[c(142,145:175)[-(c(146,151,156,161,169)-143)]], sep="\n")
+```
+]
+]
+
+
+---
+
+### Results and Comparison: Fit Indices
+
+.pull-left[
+
+**.gold[.large[*Lavaan* results]]**
+
+.scriptsize[
+```{r echo=FALSE}
+cat(sem.res[c(26,28:30,30:34, 9,11:14, 35,37:41, 21,23:25, 15,17:20, 42,44)], sep="\n")
+```
+]
+]
+
+.pull-right[
+
+**.gold[.large[*Mplus* results]]**
+
+.scriptsize[
+```{r echo=FALSE}
+cat(sem.mplus[c(101:122,122:138)][-(c(102,107,111,114,120,127,132,138)-100)], sep="\n")
+# [-(c(102,105,107,112,114,118,120,124,126,129,131,)-100)]
+```
+]
+]
+
+
+---
+
+### Modification Index
+
+```{r}
+mi <- modindices(sem.fit, 
+                 sort=TRUE, # modification index in descending order #<<
+                 maximum.number=20) # number of rows from the top #<<
+mi[mi$op == "=~", ]  # only the modification indices for the factor loadings  #<<
+```
+
+.light_mist[
+<!-- - `lhs`: left-hand side of the equation -->
+<!-- - `op`: operator -->
+<!-- - `rhs`: right-hand side of the equation  -->
+- `mi`: the modification index which is a 1-degree chi-square statistic
+- `epc`: expected parameter change (EPC) represents how much the parameter is expected to change
+- `sepec.lv`: standardized EPC by the latent variable
+- `sepec.all`: standardized EPC by all variables
+- `sepc.nox`: standardized EPC by all but exogenous observed variables
+]
+
+
+.footnote[
+Another way to get modification indices is by using the argument `modindices=TRUE` in the `summary()` function. 
+]
+
+---
+
+### `r emo::ji("green_heart")` Tip: Data Frame vs Covariance Matrix
+
+
+.pull-left[
+
+**.large[.gold[*Data Frame* as the input]]**
+<!-- .navy[Declare variables as] *.dark_coral[ordered]* .navy[in the] .coral[.bold[data frame]] -->
+
+.footnotesize[
+```{r}
+sem.fit.1 <- sem(sem.model, 
+                 meanstructure=TRUE,
+                 data=sem.df)  #<<
+# 
+# 
+
+# parameter table
+parameterEstimates(sem.fit.1)[1:12,] #<<
+```
+]
+]
+
+--
+
+.pull-right[
+
+**.large[.gold[*Covariance Matrix* as the input]]** 
+<!-- **.gold[.large[Method *2*]]**   -->
+<!-- .navy[Declare variables as] *.aqua[ordered]* .navy[in the] .coral[.bold[fitting function]] -->
+
+.footnotesize[
+```{r}
+sem.fit.2 <- sem(sem.model, 
+                 meanstructure=TRUE,
+                 sample.cov=cov(sem.df), #<<
+                 sample.mean=colMeans(sem.df), #<<
+                 sample.nobs=nrow(sem.df)) #<<
+
+# parameter table
+parameterEstimates(sem.fit.2)[1:12,]  #<<
+```
+]
+]
+
+---
+
+class: inverse, center, middle
+
+## Example 4: Linear Growth Model 
+
+---
+
+### A Linear Growth Model 
+
+.pull-left[.center[
+
+```{r echo=FALSE}
+lgm.df <- read.table(url("http://www.statmodel.com/usersguide/chap6/ex6.1.dat")
+                     , col.names=c(paste0("y", 11:14)))
+print(tibble::as_tibble(lgm.df), n=5)
+```
+]
+
+<br>
+
+- Four .dark_coral[continuous] outcome variables `y11-y14`
+- `i` is the .dark_coral[intercept] growth factor
+- `s` is the .dark_coral[slope] growth factor
+- Coefficients of the intercept factor are fixed at 1
+- Coefficients of the slope factor are fixed at 0, 1, 2, 3
+
+]
+
+.pull-right[
+
+<br />
+
+```{r, echo=FALSE, out.width="70%", fig.align='center'}
+knitr::include_graphics("img/example4.png")
+```
+
+]
+
+.footnote[*Data and model from [Example 6.11](http://www.statmodel.com/HTML_UG/chapter6V8.htm) in .navy[.navy[_Mplus user’s guide_]] `r Citep(myBib, "muthen20121998")`.]
+
+---
+### R Code 
+
+.left-column[
+<br />
+<br />
+```{r, echo=FALSE, out.width="100%", fig.align='left'}
+knitr::include_graphics("img/example4.png")
+```
+]
+
+
+.right-column[
+```{r}
+lgm.model <- '# a linear growth model for continuous outcomes
+              
+              # intercept with fixed coefficients
+              i =~ 1*y11 + 1*y12 + 1*y13 + 1*y14
+              
+              # slope with fixed coefficients
+              s =~ 0*y11 + 1*y12 + 2*y13 + 3*y14
+              '
+
+lgm.fit <- growth(lgm.model, data=lgm.df)
+```
+
+]
+
+
+---
+### Results and Comparison: Parameters
+
+.pull-left[
+
+**.gold[.large[*Lavaan* results]]**
+
+.footnotesize[
+```{r echo=FALSE, highlight.output=c(15,16,19,20,24)}
+capture.output(summary(lgm.fit, fit.measures=TRUE), file="lgm_res.txt")
+lgm.res <- readLines("lgm_res.txt")
+cat(lgm.res[c(52:64, 70,76:79,85:87,65,67:68)], sep="\n")
+```
+]
+]
+
+.pull-right[
+
+**.gold[.large[*Mplus* results]]**
+
+.footnotesize[
+
+```{r echo=FALSE, highlight.output=c(15,16,19,20,24)}
+lgm.mplus <- readLines("http://www.statmodel.com/usersguide/chap6/ex6.1.html")
+lgm.mplus <- lgm.mplus[-grep(">", lgm.mplus)]
+cat(lgm.mplus[c(120,123, 125:129,131:136, 140:143,150:153,136:139)], sep="\n")
+```
+]
+
+]
+
+---
+class: middle
+
+### Resources `r emo::ji("books")` `r emo::ji("link")`
+
+- `Lavaan`
+  - [Home page](https://lavaan.ugent.be/)
+  - [Github](https://github.com/yrosseel/lavaan/)
+  - [Resources (e.g., books (chapters), video, teaching materials, code snippets, and tutorials)](https://lavaan.ugent.be/resources/index.html)
+  - [Future development plan](https://lavaan.ugent.be/development.html), e.g.,
+      - two-level SEM with random slopes
+      - multilevel SEM with categorical data (using adaptive quadrature)
+  - [Extensions and add-ons](https://lavaan.ugent.be/resources/related.html), e.g., 
+      - `lavaan.survey`
+      - `Onyx`
+      - `semPlot`
+      - `semTools`
+      - `simsem`
+
+---
+class: middle
+
+### Summary `r emo::ji("tada")` 
+
+`Lavaan` `r emo::ji("sparkling_heart")`
+
+  `r emo::ji("yellow_heart")` .gold[Free and open-source]  
+  `r emo::ji("orange_heart")` .dark_coral[Easy and intuitive to use]  
+  `r emo::ji("blue_heart")` .navy[Reliable and advanced with commercial-quality]  
+  `r emo::ji("green_heart")` .sea_green[Extensible]  
+  `r emo::ji("purple_heart")` .purple[Constantly upgrading]
+  
+---
+class: middle
+
+### References
+
+```{r echo=FALSE, results="asis"}
+PrintBibliography(myBib, start=1, end=length(myBib))
+# PrintBibliography(bib, start=1, end=7)
+```
+
+---
+class: title-slide, middle, center
+# .Large[Thank you!] 
+<br>
+<br>
+.large[`r emo::ji("e-mail")` [jingyi_xiao@ucsb.edu](mailto:jingyi_xiao@ucsb.edu)]  
+
